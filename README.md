@@ -1,0 +1,2 @@
+# Custom_Iolife_controller
+oshibaのIotエアコンなどの制御アプリIoLIFEアプリの逆解析結果を元にした検証用APPです。
