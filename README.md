@@ -1,6 +1,6 @@
-# IoLIFE Custom Controller (Research)
+# IoLIFE Custom Controller 
 
-このフォルダは、IoLIFEアプリの逆解析結果を元にした検証用CLIです。
+ToshibaのIotエアコンなどの制御アプリIoLIFEアプリの逆解析結果を元にした検証用APPです。
 
 ## できること
 - `user/login/id/get` と `user/login` でログイン
