@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+
 from __future__ import annotations
 
 import argparse
@@ -240,8 +240,8 @@ class IoLifeClient:
 
     @staticmethod
     def _require_success(resp: Dict[str, Any]) -> Dict[str, Any]:
-        error_code = resp.get("errorCode")
-        if error_code != 0:
+        error_code = str(resp.get("errorCode", "")).strip()
+        if error_code != "0":
             raise RuntimeError(f"API error: errorCode={error_code}, msg={resp.get('msg')}, raw={resp}")
         return resp
 
