@@ -24,11 +24,6 @@ ToshibaのIotエアコン等の制御に使うIoLIFE（Toshiba）アプリの通
 - Python 3.10+
 - `pycryptodome`
 
-## セットアップ
-```bash
-python3 -m pip install -r requirements.txt
-```
-
 
 ## クイックスタート
 ### 1) ログイン
