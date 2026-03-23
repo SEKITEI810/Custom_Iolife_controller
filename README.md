@@ -2,7 +2,7 @@
 
 # IoLIFE Custom Controller
 
-ToshibaのIotエアコン等の制御に使うIoLIFE（Toshiba）アプリの通信仕様を元にした、研究・検証用のCLIアプリです。  
+ToshibaのIotエアコン等の制御に使うIoLIFE（Toshiba）アプリの通信仕様を元にした、研究・検証用のPythonで構成したCLIアプリです。  
 `main.py` 1本でログイン、機器一覧、透過送信、AC (`0xAC`) の最小クエリ/電源制御を行えます。
 
 > [!CAUTION]
