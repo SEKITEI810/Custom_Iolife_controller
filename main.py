@@ -1,4 +1,4 @@
-
+#!/usr/bin/env python3
 from __future__ import annotations
 
 import argparse
@@ -7,6 +7,7 @@ import hashlib
 import itertools
 import json
 import pathlib
+import random
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -30,6 +31,72 @@ DEFAULT_LANGUAGE = "ja_JP"
 DEFAULT_APP_VERSION = "3.3.2"
 SESSION_FILE = pathlib.Path(__file__).resolve().parent / "session.json"
 MESSAGE_COUNTER = itertools.count(1)
+AC_DEVICE_TYPE = 0xAC
+AC_REQUEST_CONTROL = 0x0002
+AC_REQUEST_QUERY = 0x0003
+AC_CONTROL_PROPERTY_CMD = 0xB0
+AC_QUERY_PROPERTY_CMD = 0xB1
+AC_QUERY_PROPERTIES: Dict[str, int] = {
+    "power": 0x01,
+    "mode": 0x02,
+    "temperature": 0x03,
+    "indoor_temperature": 0x04,
+    "outdoor_temperature": 0x05,
+    "wind_speed": 0x06,
+    "wind_speed_real": 0x07,
+    "wind_swing_ud": 0x08,
+    "wind_swing_lr": 0x09,
+    "wind_deflector": 0x0A,
+    "power_on_timer": 0x0B,
+    "power_off_timer": 0x0C,
+    "eco": 0x0D,
+    "purifier": 0x0E,
+    "dry": 0x10,
+    "humidity": 0x14,
+    "indoor_humidity": 0x15,
+    "screen_display": 0x17,
+    "no_wind_sense": 0x18,
+    "buzzer": 0x1A,
+    "error_code_query": 0x3F,
+    "mode_query": 0x41,
+    "clean": 0x46,
+    "high_temperature_monitor": 0x47,
+    "rate_select": 0x48,
+    "power_on_timer_specific": 0x53,
+    "power_off_timer_specific": 0x54,
+    "timer_expired": 0x60,
+    "timer_setting": 0x61,
+    "new_no_wind_sense": 0x70,
+    "wind_radar": 0x71,
+    "area": 0x72,
+    "way_out": 0x73,
+    "quick_mode": 0x74,
+    "change_air": 0x75,
+    "air_clean_switch": 0x76,
+    "circle_fan": 0x79,
+    "eco_power_saving": 0x7A,
+    "weak_cool": 0x7B,
+    "high_temperature_wind": 0x7C,
+    "manual_defrost": 0x7D,
+}
+CRC8_854_TABLE = [
+    0, 94, 188, 226, 97, 63, 221, 131, 194, 156, 126, 32, 163, 253, 31, 65,
+    157, 195, 33, 127, 252, 162, 64, 30, 95, 1, 227, 189, 62, 96, 130, 220,
+    35, 125, 159, 193, 66, 28, 254, 160, 225, 191, 93, 3, 128, 222, 60, 98,
+    190, 224, 2, 92, 223, 129, 99, 61, 124, 34, 192, 158, 29, 67, 161, 255,
+    70, 24, 250, 164, 39, 121, 155, 197, 132, 218, 56, 102, 229, 187, 89, 7,
+    219, 133, 103, 57, 186, 228, 6, 88, 25, 71, 165, 251, 120, 38, 196, 154,
+    101, 59, 217, 135, 4, 90, 184, 230, 167, 249, 27, 69, 198, 152, 122, 36,
+    248, 166, 68, 26, 153, 199, 37, 123, 58, 100, 134, 216, 91, 5, 231, 185,
+    140, 210, 48, 110, 237, 179, 81, 15, 78, 16, 242, 172, 47, 113, 147, 205,
+    17, 79, 173, 243, 112, 46, 204, 146, 211, 141, 111, 49, 178, 236, 14, 80,
+    175, 241, 19, 77, 206, 144, 114, 44, 109, 51, 209, 143, 12, 82, 176, 238,
+    50, 108, 142, 208, 83, 13, 239, 177, 240, 174, 76, 18, 145, 207, 45, 115,
+    202, 148, 118, 40, 171, 245, 23, 73, 8, 86, 180, 234, 105, 55, 213, 139,
+    87, 9, 235, 181, 54, 104, 138, 212, 149, 203, 41, 119, 244, 170, 72, 22,
+    233, 183, 85, 11, 136, 214, 52, 106, 43, 117, 151, 201, 74, 20, 246, 168,
+    116, 42, 200, 150, 21, 75, 169, 247, 182, 232, 10, 84, 215, 137, 107, 53,
+]
 
 
 def sha256_hex(text: str) -> str:
@@ -173,6 +240,80 @@ def parse_wifidatagram(data: bytes) -> Dict[str, Any]:
     }
 
 
+def crc16_ccitt(data: List[int], start_pos: int, end_pos: int) -> int:
+    crc = 0
+    for si in range(start_pos, end_pos + 1):
+        crc ^= (data[si] << 8)
+        for _ in range(8):
+            if crc & 0x8000:
+                crc = ((crc << 1) ^ 0x1021) & 0xFFFF
+            else:
+                crc = (crc << 1) & 0xFFFF
+    return crc & 0xFFFF
+
+
+def crc8_854(data: List[int], start_pos: int, end_pos: int) -> int:
+    crc = 0
+    for si in range(start_pos, end_pos + 1):
+        crc = CRC8_854_TABLE[(crc ^ data[si]) & 0xFF]
+    return crc
+
+
+def build_ac_uart_payload(body: List[int], request_type: int) -> bytes:
+    body_length = len(body)
+    msg_length = body_length + 0x10 + 2
+    msg = [0] * msg_length
+    msg[0] = 0x55
+    msg[1] = 0xAA
+    msg[2] = 0xCC
+    msg[3] = 0x33
+    msg_len = msg_length - 4
+    msg[4] = msg_len & 0xFF
+    msg[5] = (msg_len >> 8) & 0xFF
+    msg[6] = 0x01
+    msg[7] = AC_DEVICE_TYPE
+    msg[14] = request_type & 0xFF
+    msg[15] = (request_type >> 8) & 0xFF
+    for i, value in enumerate(body):
+        msg[0x10 + i] = value & 0xFF
+    crc = crc16_ccitt(msg, 0, msg_length - 3)
+    msg[msg_length - 2] = crc & 0xFF
+    msg[msg_length - 1] = (crc >> 8) & 0xFF
+    return bytes(msg)
+
+
+def build_ac_query_payload(query_type: str = "all") -> bytes:
+    query_type = (query_type or "all").strip().lower()
+    if query_type in {"all", "*"}:
+        body = [0] * 22
+        body[0] = 0x41
+        body[1] = 0x81
+        body[3] = 0xFF
+        body[20] = random.randint(1, 254)
+        body[21] = crc8_854(body, 0, 20)
+        return build_ac_uart_payload(body, AC_REQUEST_QUERY)
+
+    prop_code = AC_QUERY_PROPERTIES.get(query_type)
+    if prop_code is None:
+        supported = ", ".join(sorted(AC_QUERY_PROPERTIES.keys()))
+        raise ValueError(f"unsupported --query-type '{query_type}'. use: all, {supported}")
+
+    body = [AC_QUERY_PROPERTY_CMD, 1, prop_code, 0x00]
+    body.append(random.randint(1, 254))
+    body.append(0x00)
+    body[-1] = crc8_854(body, 0, len(body) - 2)
+    return build_ac_uart_payload(body, AC_REQUEST_QUERY)
+
+
+def build_ac_power_payload(state: str) -> bytes:
+    state_value = 1 if state.lower() == "on" else 0
+    body = [AC_CONTROL_PROPERTY_CMD, 1, 0x01, 0x00, 0x01, state_value]
+    body.append(random.randint(1, 254))
+    body.append(0x00)
+    body[-1] = crc8_854(body, 0, len(body) - 2)
+    return build_ac_uart_payload(body, AC_REQUEST_CONTROL)
+
+
 class IoLifeClient:
     def __init__(
         self,
@@ -230,6 +371,12 @@ class IoLifeClient:
                 text = resp.read().decode("utf-8", errors="replace")
         except urllib.error.HTTPError as exc:
             err = exc.read().decode("utf-8", errors="replace")
+            if exc.code == 504:
+                hint = (
+                    "Gateway timeout: cloud API is reachable, but appliance response timed out. "
+                    "This is usually caused by an offline device, wrong appliance-id, or invalid payload."
+                )
+                raise RuntimeError(f"HTTP 504: {err}\nHint: {hint}") from exc
             raise RuntimeError(f"HTTP {exc.code}: {err}") from exc
         except urllib.error.URLError as exc:
             raise RuntimeError(f"network error: {exc}") from exc
@@ -340,6 +487,78 @@ def parse_kv(items: List[str]) -> Dict[str, str]:
     return params
 
 
+def resolve_session_and_session_id(session_id_arg: Optional[str]) -> Tuple[Dict[str, Any], str]:
+    session = load_session()
+    session_id = session_id_arg or session.get("sessionId")
+    if not session_id:
+        raise RuntimeError("sessionId not found. Run login first.")
+    return session, str(session_id)
+
+
+def build_order_from_payload(
+    session: Dict[str, Any],
+    payload_hex: str,
+    appliance_id: str,
+    msg_type: int = 32,
+    msg_id: Optional[int] = None,
+    verbose: bool = False,
+) -> str:
+    data_key = session.get("dataKey")
+    if not data_key:
+        raise RuntimeError("dataKey missing in session; transparent encode is not available")
+    data_iv = session.get("dataIV")
+    normalized_payload = payload_hex.strip().replace(" ", "").replace(":", "")
+    packet = build_wifidatagram(
+        payload_hex=normalized_payload,
+        appliance_id=appliance_id,
+        msg_type=msg_type,
+        msg_id=msg_id,
+    )
+    plain_dec = bytes_to_dec_string(packet)
+    order = aes_encrypt_hex(plain_dec, data_key, data_iv if data_iv else None)
+    if verbose:
+        print("payload-hex:", normalized_payload.upper())
+        print("plain-dec:", plain_dec)
+        print("packet-hex:", packet.hex().upper())
+        print("order:", order)
+    return order
+
+
+def decode_transparent_reply_if_requested(
+    session: Dict[str, Any],
+    resp: Dict[str, Any],
+    decode_reply: bool,
+) -> None:
+    if not decode_reply:
+        return
+    if str(resp.get("errorCode", "")).strip() != "0":
+        return
+    result = resp.get("result") or {}
+    reply = result.get("reply")
+    data_key = session.get("dataKey")
+    if reply and data_key:
+        data_iv = session.get("dataIV")
+        dec = aes_decrypt_hex(str(reply), data_key, data_iv if data_iv else None)
+        raw = dec_string_to_bytes(dec)
+        try:
+            parsed = parse_wifidatagram(raw)
+            print(json.dumps({"replyDec": dec, "replyParsed": parsed}, ensure_ascii=False, indent=2))
+        except Exception as exc:
+            print(json.dumps({"replyDec": dec, "replyHex": raw.hex().upper(), "replyParseError": str(exc)}, ensure_ascii=False, indent=2))
+
+
+def send_transparent_order(
+    language: str,
+    session_id: str,
+    appliance_id: str,
+    order: str,
+) -> Dict[str, Any]:
+    client = IoLifeClient(language=language)
+    resp = client.transparent_send(session_id=session_id, appliance_id=appliance_id, order=order)
+    print(json.dumps(resp, ensure_ascii=False, indent=2))
+    return resp
+
+
 def cmd_login(args: argparse.Namespace) -> None:
     client = IoLifeClient(language=args.language)
     session = client.login(account=args.account, password=args.password, push_type=args.push_type, push_token=args.push_token)
@@ -370,42 +589,77 @@ def cmd_call(args: argparse.Namespace) -> None:
 
 
 def cmd_transparent(args: argparse.Namespace) -> None:
-    session = load_session()
-    session_id = args.session_id or session.get("sessionId")
-    if not session_id:
-        raise RuntimeError("sessionId not found. Run login first.")
+    session, session_id = resolve_session_and_session_id(args.session_id)
 
     order = args.order
     if not order:
         payload_hex = args.payload_hex
         if not payload_hex:
             raise RuntimeError("either --order or --payload-hex is required")
-        data_key = session.get("dataKey")
-        if not data_key:
-            raise RuntimeError("dataKey missing in session; transparent encode is not available")
-        data_iv = session.get("dataIV")
-        packet = build_wifidatagram(payload_hex=payload_hex, appliance_id=args.appliance_id, msg_type=args.msg_type, msg_id=args.msg_id)
-        plain_dec = bytes_to_dec_string(packet)
-        order = aes_encrypt_hex(plain_dec, data_key, data_iv if data_iv else None)
-        if args.verbose:
-            print("plain-dec:", plain_dec)
-            print("packet-hex:", packet.hex().upper())
-            print("order:", order)
+        order = build_order_from_payload(
+            session=session,
+            payload_hex=payload_hex,
+            appliance_id=args.appliance_id,
+            msg_type=args.msg_type,
+            msg_id=args.msg_id,
+            verbose=args.verbose,
+        )
 
-    client = IoLifeClient(language=args.language)
-    resp = client.transparent_send(session_id=session_id, appliance_id=args.appliance_id, order=order)
-    print(json.dumps(resp, ensure_ascii=False, indent=2))
+    resp = send_transparent_order(
+        language=args.language,
+        session_id=session_id,
+        appliance_id=args.appliance_id,
+        order=order,
+    )
+    decode_transparent_reply_if_requested(session=session, resp=resp, decode_reply=args.decode_reply)
 
-    if args.decode_reply and resp.get("errorCode") == 0:
-        result = resp.get("result") or {}
-        reply = result.get("reply")
-        data_key = session.get("dataKey")
-        if reply and data_key:
-            data_iv = session.get("dataIV")
-            dec = aes_decrypt_hex(str(reply), data_key, data_iv if data_iv else None)
-            raw = dec_string_to_bytes(dec)
-            parsed = parse_wifidatagram(raw)
-            print(json.dumps({"replyDec": dec, "replyParsed": parsed}, ensure_ascii=False, indent=2))
+
+def cmd_ac_query(args: argparse.Namespace) -> None:
+    payload = build_ac_query_payload(query_type=args.query_type).hex().upper()
+    if args.print_payload:
+        print(payload)
+        return
+
+    session, session_id = resolve_session_and_session_id(args.session_id)
+    order = build_order_from_payload(
+        session=session,
+        payload_hex=payload,
+        appliance_id=args.appliance_id,
+        msg_type=args.msg_type,
+        msg_id=args.msg_id,
+        verbose=args.verbose,
+    )
+    resp = send_transparent_order(
+        language=args.language,
+        session_id=session_id,
+        appliance_id=args.appliance_id,
+        order=order,
+    )
+    decode_transparent_reply_if_requested(session=session, resp=resp, decode_reply=args.decode_reply)
+
+
+def cmd_ac_power(args: argparse.Namespace) -> None:
+    payload = build_ac_power_payload(state=args.state).hex().upper()
+    if args.print_payload:
+        print(payload)
+        return
+
+    session, session_id = resolve_session_and_session_id(args.session_id)
+    order = build_order_from_payload(
+        session=session,
+        payload_hex=payload,
+        appliance_id=args.appliance_id,
+        msg_type=args.msg_type,
+        msg_id=args.msg_id,
+        verbose=args.verbose,
+    )
+    resp = send_transparent_order(
+        language=args.language,
+        session_id=session_id,
+        appliance_id=args.appliance_id,
+        order=order,
+    )
+    decode_transparent_reply_if_requested(session=session, resp=resp, decode_reply=args.decode_reply)
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -442,6 +696,28 @@ def build_parser() -> argparse.ArgumentParser:
     p_trans.add_argument("--decode-reply", action="store_true")
     p_trans.add_argument("--verbose", action="store_true")
     p_trans.set_defaults(func=cmd_transparent)
+
+    p_ac_query = sub.add_parser("ac-query", help="AC(0xAC) query payload builder + transparent send")
+    p_ac_query.add_argument("--appliance-id", required=True)
+    p_ac_query.add_argument("--query-type", default="all", help="all or one property key (e.g. power/mode/temperature)")
+    p_ac_query.add_argument("--print-payload", action="store_true", help="print payload hex and exit")
+    p_ac_query.add_argument("--msg-type", type=int, default=32)
+    p_ac_query.add_argument("--msg-id", type=int)
+    p_ac_query.add_argument("--session-id")
+    p_ac_query.add_argument("--decode-reply", action="store_true")
+    p_ac_query.add_argument("--verbose", action="store_true")
+    p_ac_query.set_defaults(func=cmd_ac_query)
+
+    p_ac_power = sub.add_parser("ac-power", help="AC(0xAC) power control + transparent send")
+    p_ac_power.add_argument("--appliance-id", required=True)
+    p_ac_power.add_argument("--state", required=True, choices=["on", "off"])
+    p_ac_power.add_argument("--print-payload", action="store_true", help="print payload hex and exit")
+    p_ac_power.add_argument("--msg-type", type=int, default=32)
+    p_ac_power.add_argument("--msg-id", type=int)
+    p_ac_power.add_argument("--session-id")
+    p_ac_power.add_argument("--decode-reply", action="store_true")
+    p_ac_power.add_argument("--verbose", action="store_true")
+    p_ac_power.set_defaults(func=cmd_ac_power)
     return parser
 
 
