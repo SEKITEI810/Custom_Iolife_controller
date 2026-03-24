@@ -280,7 +280,111 @@ Property codes are implemented in `AC_QUERY_PROPERTIES`:
 - random byte + CRC8
 - wrapped with request type `0x0002`
 
-## 11. Error Behavior
+## 11. AC Control Property Reference
+
+### 11.1 AC_24 Control Property Codes
+
+| Code   | Property Name              |
+|--------|----------------------------|
+| `0x01` | `powerValue`               |
+| `0x02` | `modeValue`                |
+| `0x03` | `temperature`              |
+| `0x04` | `indoorTemperatureValue`   |
+| `0x05` | `outdoorTemperatureValue`  |
+| `0x06` | `fanspeedValue`            |
+| `0x07` | `fanspeedRealValue`        |
+| `0x08` | `swingUDValue`             |
+| `0x09` | `swingLRValue`             |
+| `0x0B` | `openTimerSwitch`          |
+| `0x0C` | `closeTimerSwitch`         |
+| `0x0D` | `ecoValue`                 |
+| `0x0E` | `purifierValue`            |
+| `0x10` | `dryValue`                 |
+| `0x14` | `humidityValue`            |
+| `0x15` | `humidityNowValue`         |
+| `0x17` | `screenDisplayValue`       |
+| `0x18` | `noWindSenseValue`         |
+| `0x21` | `coolHot`                  |
+| `0x22` | `ai_study_control`         |
+| `0x23` | `ai_study_temperature`     |
+| `0x30` | `nobodyEnergySaveValue`    |
+| `0x32` | `windStraightValue`        |
+| `0x33` | `windAvoidValue`           |
+| `0x3D` | `filterReset`              |
+| `0x46` | `cleanAutoValue`           |
+| `0x47` | `highMonitorValue`         |
+| `0x48` | `rateSelectValue`          |
+| `0x50` | `energySaveValue`          |
+| `0x51` | `dehumidifyValue`          |
+| `0x52` | `timerDailyValue`          |
+| `0x53` | `openTimerSwitchSpecific`  |
+| `0x54` | `closeTimerSwitchSpecific` |
+| `0x55` | `comfortAirflowValue`      |
+| `0x60` | `timer_expired`            |
+| `0x61` | `timer_setting`            |
+
+### 11.2 Extended Property Codes (AC_26 and later)
+
+| Code   | Property Name           | Min Version |
+|--------|-------------------------|-------------|
+| `0x70` | `new_no_wind_sense`     | AC_26+      |
+| `0x71` | `wind_radar`            | AC_26+      |
+| `0x72` | `area`                  | AC_26+      |
+| `0x73` | `way_out`               | AC_26+      |
+| `0x74` | `quick_mode`            | AC_26+      |
+| `0x75` | `change_air`            | AC_26+      |
+| `0x76` | `air_clean_switch`      | AC_28+      |
+| `0x77` | `timer_do_self_clean`   | AC_26+      |
+| `0x78` | `favorite_mode`         | AC_29+      |
+| `0x79` | `circle_fan`            | AC_30+      |
+| `0x7A` | `eco_power_saving`      | AC_30+      |
+| `0x7B` | `weak_cool`             | AC_31+      |
+| `0x7C` | `high_temperature_wind` | AC_32       |
+| `0x7D` | `manual_defrost`        | AC_32       |
+
+### 11.3 Property Value Ranges
+
+| Property                        | Min   | Max   |
+|---------------------------------|-------|-------|
+| `temperature`                   | 16    | 32    |
+| `fanspeedValue`                 | 0     | 102   |
+| `fanspeedRealValue`             | 0     | 102   |
+| `swingUDValue`                  | 0     | 3     |
+| `swingLRValue`                  | 0     | 3     |
+| `humidityValue`                 | 0     | 100   |
+| `screenDisplayValue`            | 0     | 100   |
+| `noWindSenseValue`              | 0     | 5     |
+| `windDeflectorAngleLrValue`     | 0     | 100   |
+| `windDeflectorAngleUdValue`     | 0     | 100   |
+| `rateSelectValue`               | 1     | 100   |
+| `dehumidifyValue`               | 0     | 4     |
+| `nobodyEnergySaveLowTimeValue`  | 0     | 65535 |
+| `nobodyEnergySavePowerOffValue` | 0     | 1     |
+
+### 11.4 Mode and Fan Speed Constants
+
+#### Operation Mode (`modeValue` / `0x02`)
+
+| Constant           | Value  | Description |
+|--------------------|--------|-------------|
+| `BYTE_MODE_AUTO`      | `0x01` | 自動        |
+| `BYTE_MODE_COOL`      | `0x02` | 冷房        |
+| `BYTE_MODE_DRY`       | `0x03` | 除湿        |
+| `BYTE_MODE_HEAT`      | `0x04` | 暖房        |
+| `BYTE_MODE_FAN`       | `0x05` | 送風        |
+| `BYTE_MODE_SMART_DRY` | `0x06` | スマート除湿 |
+
+#### Fan Speed (`fanspeedValue` / `0x06`)
+
+| Constant            | Value  | Description |
+|---------------------|--------|-------------|
+| `BYTE_FANSPEED_AUTO` | `0x00` | 自動        |
+| `BYTE_FANSPEED_HIGH` | `0x50` | 強          |
+| `BYTE_FANSPEED_MID`  | `0x3C` | 中          |
+| `BYTE_FANSPEED_LOW`  | `0x14` | 弱          |
+| `BYTE_FANSPEED_MUTE` | `0x01` | おやすみ     |
+
+## 12. Error Behavior
 
 ### HTTP errors
 
@@ -295,7 +399,7 @@ Property codes are implemented in `AC_QUERY_PROPERTIES`:
   - example: `{"code":"","message":"invalidSession"}`
   - this is not normalized by `_require_success`; caller should handle it.
 
-## 12. CLI to API Mapping
+## 13. CLI to API Mapping
 
 - `login` -> `user/login/id/get`, `user/login`
 - `devices` -> `appliance/user/home/page/list/info`
@@ -304,7 +408,7 @@ Property codes are implemented in `AC_QUERY_PROPERTIES`:
 - `ac-query` -> local AC payload builder + `transparent`
 - `ac-power` -> local AC control payload builder + `transparent`
 
-## 13. Security Notes
+## 14. Security Notes
 
 - Credentials and session tokens are sensitive.
 - `session.json` includes session/auth data in plaintext.
